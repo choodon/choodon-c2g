@@ -21,9 +21,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.Field;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 /**
  * DefaultC2G
@@ -44,20 +44,6 @@ public class DefaultC2G {
     private static final Object VALUE = new Object();
 
 
-    private static void init(Class clazz) {
-        if (clazz == null) {
-            throw new NullPointerException("clazz is null.");
-        }
-        ThreadLocal threadLocal = new ThreadLocal();
-        try {
-            threadLocal.set(clazz.newInstance());
-            INSTANCE_CONTAINER.put(clazz, threadLocal);
-        } catch (Exception e) {
-            LOGGER.error("create instance exception: ", e);
-            throw new IllegalArgumentException("create instance exception");
-        }
-    }
-
     public static <T> T allocate(Class<T> clazz) {
         return allocate(clazz, false, false);
     }
@@ -74,9 +60,8 @@ public class DefaultC2G {
                             LOGGER.error("create instance exception: ", e);
                             throw new IllegalArgumentException("create instance exception");
                         }
-                        Field[] fields = clazz.getFields();
-                        Field[] declaredFields = clazz.getDeclaredFields();
-                        for (Field field : fields) {
+                        List<Field> fieldList = listField(clazz);
+                        fieldList.stream().forEach(field -> {
                             field.setAccessible(true);
                             try {
                                 FIELD_DEFAULT_VALUE_CONTAINER.put(field, field.get(t));
@@ -84,21 +69,10 @@ public class DefaultC2G {
                                 LOGGER.error("get field value exception: ", e);
                                 throw new IllegalArgumentException("get field value exception");
                             }
-                        }
-                        for (Field field : declaredFields) {
-                            field.setAccessible(true);
-                            try {
-                                FIELD_DEFAULT_VALUE_CONTAINER.put(field, field.get(t));
-                            } catch (Exception e) {
-                                LOGGER.error("get field value exception: ", e);
-                                throw new IllegalArgumentException("get field value exception");
-                            }
-                        }
+                        });
                     } else {
-                        Field[] fields = clazz.getFields();
-                        Field[] declaredFields = clazz.getDeclaredFields();
-                        for (Field field : fields) {
-                            field.setAccessible(true);
+                        List<Field> fieldList = listField(clazz);
+                        fieldList.stream().forEach(field -> {
                             try {
                                 Class fieldClazz = field.getType();
                                 if (!fieldClazz.isPrimitive()) {
@@ -116,27 +90,7 @@ public class DefaultC2G {
                                 LOGGER.error("get field value exception: ", e);
                                 throw new IllegalArgumentException("get field value exception");
                             }
-                        }
-                        for (Field field : declaredFields) {
-                            field.setAccessible(true);
-                            try {
-                                Class fieldClazz = field.getType();
-                                if (!fieldClazz.isPrimitive()) {
-                                    FIELD_DEFAULT_VALUE_CONTAINER.put(field, null);
-                                } else {
-                                    if (fieldClazz == byte.class || fieldClazz == short.class || fieldClazz == int.class || fieldClazz == long.class || fieldClazz == float.class || fieldClazz == double.class) {
-                                        FIELD_DEFAULT_VALUE_CONTAINER.put(field, 0);
-                                    } else if (fieldClazz == boolean.class) {
-                                        FIELD_DEFAULT_VALUE_CONTAINER.put(field, false);
-                                    } else if (fieldClazz == char.class) {
-                                        FIELD_DEFAULT_VALUE_CONTAINER.put(field, '\u0000');
-                                    }
-                                }
-                            } catch (Exception e) {
-                                LOGGER.error("get field value exception: ", e);
-                                throw new IllegalArgumentException("get field value exception");
-                            }
-                        }
+                        });
                     }
                     CLASS_CONTAINER.put(clazz, VALUE);
                 }
@@ -166,7 +120,7 @@ public class DefaultC2G {
         } else {
             synchronized (clazz) {
                 if (!INSTANCE_CONTAINER.containsKey(clazz)) {
-                    init(clazz);
+                    initInstance(clazz);
                     return (T) INSTANCE_CONTAINER.get(clazz).get();
                 }
             }
@@ -175,9 +129,32 @@ public class DefaultC2G {
 
     }
 
+    private static final List<Field> listField(Class<?> clazz) {
+        List<Class> clazzList = new ArrayList<>();
+        while (clazz != Object.class) {
+            clazzList.add(clazz);
+            clazz = clazz.getSuperclass();
+        }
+        return clazzList.stream().flatMap(item -> Arrays.stream(item.getDeclaredFields())).collect(Collectors.toList());
+    }
+
+    private static void initInstance(Class clazz) {
+        if (clazz == null) {
+            throw new NullPointerException("clazz is null.");
+        }
+        ThreadLocal threadLocal = new ThreadLocal();
+        try {
+            threadLocal.set(clazz.newInstance());
+            INSTANCE_CONTAINER.put(clazz, threadLocal);
+        } catch (Exception e) {
+            LOGGER.error("create instance exception: ", e);
+            throw new IllegalArgumentException("create instance exception");
+        }
+    }
+
     private static void clear(Class clazz) {
         Object obj = INSTANCE_CONTAINER.get(clazz).get();
-        FIELD_DEFAULT_VALUE_CONTAINER.entrySet().stream().forEach(entry -> {
+        FIELD_DEFAULT_VALUE_CONTAINER.entrySet().parallelStream().forEach(entry -> {
             try {
                 entry.getKey().set(obj, entry.getValue());
             } catch (Exception e) {

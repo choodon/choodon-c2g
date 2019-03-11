@@ -16,6 +16,10 @@
 
 package com.choodon.c2g;
 
+import java.lang.ref.WeakReference;
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * Demo
  *
@@ -69,9 +73,20 @@ public class Demo {
         this.d = d;
     }
 
+    @Override
+    public String toString() {
+        final StringBuffer sb = new StringBuffer("Demo{");
+        sb.append("a=").append(a);
+        sb.append(", b=").append(b);
+        sb.append(", c='").append(c).append('\'');
+        sb.append(", d='").append(d).append('\'');
+        sb.append(", e='").append(e).append('\'');
+        sb.append('}');
+        return sb.toString();
+    }
 
-    public static void main(String[] args) {
-        int length = 1000000000;
+    public static void main(String[] args) throws InterruptedException {
+        int length = 1000000;
         int threads = 10;
         for (int i = 0; i < threads; i++) {
             new Thread(() -> {
@@ -91,11 +106,6 @@ public class Demo {
                 Long now1 = System.currentTimeMillis();
                 System.out.println("c2g:" + (now1 - now0));
             }).start();
-
-            System.out.println(DefaultC2G.allocate(Demo.class));
-
-
         }
-
     }
 }
